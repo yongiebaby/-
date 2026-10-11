@@ -1,0 +1,4 @@
+_state.pkl
+*.csv.zip
+data/
+__pycache__/
