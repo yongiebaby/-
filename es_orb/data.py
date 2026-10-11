@@ -7,7 +7,7 @@ OR_MINUTES = (5, 15, 30, 60)
 MAX_BARS = 78  # 9:30-16:00 ET の5分足本数
 MIN_RTH_BARS = 70  # これ未満の日(祝日・短縮取引日)は除外
 
-USECOLS = ["DateTime_UTC", "IsRTH", "Open", "High", "Low", "Close", "ATR20Ticks"]
+USECOLS = ["DateTime_UTC", "IsRTH", "Open", "High", "Low", "Close", "Volume", "Delta", "ATR20Ticks"]
 
 
 def _read_one(path):
@@ -65,10 +65,13 @@ def build_days(df):
         days.append(info)
         rows.append(ii)
 
+    # RTHの全セッション(除外日も含む)。前日・オーバーナイトの計算に使う
+    all_sessions = [(d, g.to_numpy()) for d, g in groups]
     D = len(rows)
     shape = (D, MAX_BARS)
     arr = {k: np.full(shape, np.nan) for k in ("O", "H", "L", "C", "P3L", "P3H", "ATR")}
     MIN = np.full(shape, 9999, dtype=np.int64)
+    GIDX = np.full(shape, -1, dtype=np.int64)
     NB = np.zeros(D, dtype=np.int64)
     src = dict(O=df["Open"].to_numpy(float), H=high, L=low, C=df["Close"].to_numpy(float),
                P3L=p3l, P3H=p3h, ATR=atr)
@@ -76,6 +79,7 @@ def build_days(df):
         n = len(ii)
         NB[di] = n
         MIN[di, :n] = minute[ii]
+        GIDX[di, :n] = ii
         for k in arr:
             arr[k][di, :n] = src[k][ii]
 
@@ -91,7 +95,7 @@ def build_days(df):
                 ORL[oi, di] = arr["L"][di, :n][sel].min()
 
     dates = pd.to_datetime([r["date"] for r in days])
-    return dict(**arr, MIN=MIN, NB=NB, ORH=ORH, ORL=ORL,
+    return dict(**arr, _ALL=np.ones(shape, dtype=np.bool_), MIN=MIN, NB=NB, ORH=ORH, ORL=ORL, GIDX=GIDX, df=df, all_sessions=all_sessions,
                 dates=dates, year=dates.year.to_numpy(np.int64),
                 days=pd.DataFrame(days), excluded=pd.DataFrame(excluded))
 

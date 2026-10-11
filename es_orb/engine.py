@@ -33,8 +33,9 @@ REASONS = {0: "stop", 1: "target", 2: "eod", 3: "gap_stop"}
 @njit(cache=True)
 def simulate(O, H, L, C, P3L, P3H, ATR, MIN, NB, orh_arr, orl_arr, or_min,
              stop_type, rr, mode, max_tr, end_min,
-             atr_lo, atr_hi, orr_lo, orr_hi, wk_lo, wk_hi, out, anomalies):
+             atr_lo, atr_hi, orr_lo, orr_hi, wk_lo, wk_hi, allowL, allowS, out, anomalies):
     """1設定を全日で回す。out にトレード、anomalies に損切り不成立(ギャップ)の見送りを書く。
+    allowL/allowS: (D, 78) の真偽マスク。シグナル足でFalseなら見送り(特徴量フィルター)。
     戻り値: (トレード数, 見送り数)"""
     D = O.shape[0]
     nt = 0
@@ -107,6 +108,8 @@ def simulate(O, H, L, C, P3L, P3H, ATR, MIN, NB, orh_arr, orl_arr, or_min,
                 ok = (not np.isnan(orr)) and orr >= orr_lo and orr < orr_hi
             if ok:
                 ok = wk >= wk_lo and wk <= wk_hi
+            if ok:
+                ok = allowL[d, k] if sig == 1 else allowS[d, k]
             if not ok:
                 k += 1
                 continue

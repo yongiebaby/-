@@ -37,21 +37,22 @@
 }
 * { box-sizing: border-box; }
 body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 14px; line-height: 1.6; }
-.wrap { max-width: 1120px; margin: 0 auto; padding-inline: 16px; padding-block: 32px 64px; display: grid; gap: 40px; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-inline: 16px; padding-block: 32px 64px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 40px; }
 header { display: grid; gap: 12px; }
 .eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
 h1 { font-family: var(--font-display); font-size: clamp(26px, 4vw, 36px); line-height: 1.2; margin: 0; text-wrap: balance; }
 h2 { font-family: var(--font-display); font-size: 21px; margin: 0; text-wrap: balance; }
 h3 { font-size: 15px; margin: 0; font-weight: 700; }
 p { margin: 0; max-width: 72ch; color: var(--ink-2); }
-section { display: grid; gap: 14px; min-width: 0; }
+section { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }
 .sec-head { display: grid; gap: 6px; border-top: 1px solid var(--rule); padding-top: 18px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { background: var(--chip); border-radius: 4px; padding: 2px 8px; font-size: 12px; color: var(--ink-2); font-family: var(--font-mono); }
 .chip.warn { color: var(--ink); box-shadow: inset 3px 0 0 var(--neg); }
 .controls { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end; }
 .controls label { display: grid; gap: 2px; font-size: 11px; color: var(--ink-3); letter-spacing: .04em; }
-select { font: inherit; font-size: 13px; color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; padding: 4px 6px; }
+.controls label { max-width: 100%; min-width: 0; grid-template-columns: minmax(0, 1fr); }
+select { max-width: min(100%, calc(100vw - 32px)); font: inherit; font-size: 13px; color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; padding: 4px 6px; }
 select:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tbl { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; }
 table { border-collapse: collapse; width: 100%; font-size: 13px; }
@@ -107,7 +108,9 @@ details ul { margin: 8px 0 0; padding-left: 20px; color: var(--ink-2); display: 
         <li>再エントリー: 一度シグナルが出た側は、終値がORの内側に戻ってから改めてブレイクした場合のみ再エントリー。保有中に出たブレイクも無効になる。</li>
         <li>再エントリーの種類: 1日1回 / 同方向のみ / 逆方向のみ / 両方可。上限 2・3・無制限。</li>
         <li>エントリー受付の終了: 11:30 / 13:30 / 15:30 / 16:00。</li>
-        <li>ブレイク足フィルター: 足の値幅 ÷ ATR20（1本前）、足の値幅 ÷ OR幅。ヒゲ本数フィルターも併用。</li>
+        <li>特徴量フィルター（19種）: 日足ATRのレジーム、OR幅・オーバーナイト値幅・前日値幅のATR比、ブレイク足の大きさ、日足SMA20に対する位置、ギャップ、オーバーナイトの値動き、前日RTHとオーバーナイトのボリュームプロファイル（POC・バリューエリア）、前日高安・オーバーナイト高安までの余地、RTH VWAP、5分足EMA20/50、相対出来高（OR・ブレイク足）、デルタ比。ブレイク前のヒゲ本数も条件として使用。</li>
+        <li>ボリュームプロファイルは5分足の出来高を高安の範囲に均等配分して計算（バリューエリア70%）。オーバーナイトは前日16:00–18:00を除く18:00–09:30。</li>
+        <li>採用条件: ISの各年でトレード100件以上。</li>
       </ul>
     </details>
   </header>
@@ -118,15 +121,27 @@ details ul { margin: 8px 0 0; padding-left: 20px; color: var(--ink-2); display: 
     <div class="sec-head">
       <div class="eyebrow">ウォークフォワード</div>
       <h2>OOS（未使用期間）の成績</h2>
-      <p>2年間のISで最適化し、翌1年のOOSに適用する手順を4回繰り返して、OOSだけをつなげた成績です。スコア1は「ネット損益/最大DD」と「期待値」、スコア2は「ネット損益/最大DD」と「勝率」の順位を平均したもの。ISで<span id="mintr"></span>トレード未満の設定は対象外。</p>
+      <p>2年間のISで最適化し、翌1年のOOSに適用する手順を4回繰り返して、OOSだけをつなげた成績です。スコア1は「ネット損益/最大DD」と「期待値」、スコア2は「ネット損益/最大DD」と「勝率」の順位を平均したもの。<b>ISの各年でトレードが100件未満の設定は不採用</b>にしています。</p>
     </div>
-    <div class="kpis" id="kpis"></div>
-    <div class="chart" id="eqchart"></div>
     <div class="controls">
       <label for="wfScore">スコア<select id="wfScore"><option value="score1">スコア1（NP/DD × 期待値）</option><option value="score2">スコア2（NP/DD × 勝率）</option></select></label>
     </div>
+    <div class="kpis" id="kpis"></div>
+    <div class="chart" id="eqchart"></div>
     <div class="tbl" id="wftable"></div>
-    <p class="note">「フィルターあり」はベース設定の上位候補にブレイク足サイズ・ヒゲ本数フィルターを掛けた中から選んだもの。「ベースのみ」はフィルターなしの3,200通りから選んだもの。</p>
+    <p class="note">「ベースのみ」はフィルターなしの3,200通りの上位20件から、「単独条件」はそれに特徴量1つの条件を掛けた候補（約2,300通り）から、「2条件」は単独条件の上位同士を組み合わせた候補も含めた中から選んだもの。条件の閾値はISのシグナル分布の分位点で決めています。</p>
+  </section>
+
+  <section id="feat">
+    <div class="sec-head">
+      <div class="eyebrow">特徴量</div>
+      <h2>ボラティリティ・レジーム・コンフルエンスの効き目</h2>
+      <p>1日1回・受付16:00・フィルターなしのトレードを、各特徴量の上位20%と下位20%（カテゴリは +1 と −1）に分けて期待値を比べたもの。t値の絶対値が2を超え、かつ年ごとの差の符号が6年中5年以上そろっていれば、効果がありそうと言える目安です。方向を持つ特徴量は、ブレイク方向に有利なほど大きくなるよう符号をそろえています。</p>
+    </div>
+    <div class="controls" id="featCtl"></div>
+    <div class="tbl" id="featTable"></div>
+    <div class="controls" id="fqCtl"></div>
+    <div class="tbl" id="fqTable"></div>
   </section>
 
   <section id="grid">
@@ -209,12 +224,8 @@ const RRS = [0.2, 0.5, 1, 1.5, 2];
 const ORS = [5, 15, 30, 60];
 const MI = {trades: 0, net_usd: 1, win_rate: 2, pf: 3, exp_r: 4, max_dd: 5, both_hit: 6, gap_skip: 7};
 const MLABEL = {trades: "件数", net_usd: "損益 $", win_rate: "勝率", pf: "PF", exp_r: "期待値 R", max_dd: "最大DD $", both_hit: "両方ヒット", gap_skip: "不成立見送り"};
-const VARIANT = {
-  "score1|filtered": ["スコア1 · フィルターあり", "--s1", false],
-  "score1|base_only": ["スコア1 · ベースのみ", "--s2", true],
-  "score2|filtered": ["スコア2 · フィルターあり", "--s3", false],
-  "score2|base_only": ["スコア2 · ベースのみ", "--s4", true],
-};
+const VNAME = {base_only: ["ベースのみ", "--s2", true], single: ["単独条件", "--s3", false], pair: ["2条件", "--s1", false]};
+const VARIANT = new Proxy({}, {get: (_, k) => { const [sc, v] = String(k).split("|"); const b = VNAME[v]; return [b[0], b[1], b[2]]; }});
 
 const $ = (id) => document.getElementById(id);
 const nf0 = new Intl.NumberFormat("en-US", {maximumFractionDigits: 0});
@@ -266,7 +277,6 @@ function metricCols(heatNet) {
 function header() {
   const m = DATA.meta;
   $("lede").textContent = `${m.first} 〜 ${m.last} の ${m.days} 営業日。コスト込み（成行1tick・往復$4）、1枚固定で計算しています。`;
-  $("mintr").textContent = m.min_trades;
   const chips = Object.entries(m.per_year).map(([y, n]) => `<span class="chip">${y}: ${n}日</span>`);
   chips.push(`<span class="chip">除外 ${m.excluded}日（祝日・短縮日）</span>`);
   if (m.per_year["2024"] && m.per_year["2024"] < 230) chips.push(`<span class="chip warn">2024-09-27〜2025-01-20 データ欠損</span>`);
@@ -276,18 +286,21 @@ function header() {
 
 // ---------- walk-forward ----------
 function kpis() {
-  const html = DATA.oos_summary.map(s => {
+  const sc = val("wfScore");
+  const order = ["base_only", "single", "pair"];
+  const html = DATA.oos_summary.filter(s => s.variant.startsWith(sc + "|")).sort((a, b) => order.indexOf(a.variant.split("|")[1]) - order.indexOf(b.variant.split("|")[1])).map(s => {
     const [name, col, dash] = VARIANT[s.variant];
     return `<div class="kpi"><div class="name"><span class="swatch" style="background:var(${col})${dash ? ";opacity:.75" : ""}"></span>${name}</div>
       <div class="big">${fmt("net_usd", s.net_usd)}</div>
       <dl><dt>期待値</dt><dd>${fmt("exp_r", s.exp_r)} R</dd><dt>勝率</dt><dd>${fmt("win_rate", s.win_rate)}</dd>
-      <dt>PF</dt><dd>${fmt("pf", s.pf)}</dd><dt>最大DD</dt><dd>${fmt("max_dd", s.max_dd)}</dd><dt>件数</dt><dd>${fmt("trades", s.trades)}</dd></dl></div>`;
+      <dt>PF</dt><dd>${fmt("pf", s.pf)}</dd><dt>最大DD</dt><dd>${fmt("max_dd", s.max_dd)}</dd><dt>件数</dt><dd>${fmt("trades", s.trades)}</dd>
+      ${Object.entries(s.per_year || {}).map(([y, v]) => `<dt>${y}</dt><dd>${fmt("net_usd", v)}</dd>`).join("")}</dl></div>`;
   }).join("");
   $("kpis").innerHTML = html || `<p>ウォークフォワードの結果がありません。</p>`;
 }
 
 function equityChart() {
-  const keys = Object.keys(DATA.curves);
+  const keys = Object.keys(DATA.curves).filter(k => k.startsWith(val("wfScore") + "|")).sort((a, b) => ["base_only", "single", "pair"].indexOf(a.split("|")[1]) - ["base_only", "single", "pair"].indexOf(b.split("|")[1]));
   if (!keys.length) { $("eqchart").innerHTML = "<p>データなし</p>"; return; }
   const W = 1000, H = 340, P = {l: 64, r: 150, t: 16, b: 32};
   const all = keys.flatMap(k => DATA.curves[k]);
@@ -350,13 +363,14 @@ function niceStep(raw) { const p = Math.pow(10, Math.floor(Math.log10(Math.max(r
 
 function wfTable() {
   const sc = val("wfScore");
-  const rows = DATA.wf.filter(r => r.score === sc).sort((a, b) => a.step - b.step || (a.variant > b.variant ? -1 : 1));
+  const ord = {base_only: 0, single: 1, pair: 2};
+  const rows = DATA.wf.filter(r => r.score === sc).sort((a, b) => a.step - b.step || ord[a.variant] - ord[b.variant]);
   const cols = [
-    {k: "step", t: "OOS年", l: true}, {k: "variant", t: "種類", l: true, f: v => v === "filtered" ? "フィルターあり" : "ベースのみ"},
+    {k: "step", t: "OOS年", l: true}, {k: "variant", t: "種類", l: true, f: v => VNAME[v][0]},
     {k: "or_min", t: "OR", f: v => v + "分"}, {k: "stop", t: "損切り", l: true, f: v => STOP[STOPKEY[v]]}, {k: "rr", t: "RR"},
     {k: "mode", t: "再エントリー", l: true, f: (v, r) => MODE[MODEKEY[v]] + (r.max_tr > 1 ? ` 上限${r.max_tr >= 99 ? "なし" : r.max_tr}` : "")},
     {k: "end_min", t: "受付終了", f: v => ENDS[v]}, {k: "filters", t: "フィルター", l: true},
-    {k: "is_trades", t: "IS件数", f: v => fmt("trades", v)}, {k: "is_exp_r", t: "IS期待値", f: v => fmt("exp_r", v), heat: 0.15},
+    {k: "is_trades", t: "IS件数（年別）", f: (v, r) => `${fmt("trades", v)} (${r.is_trades_a}/${r.is_trades_b})`}, {k: "is_exp_r", t: "IS期待値", f: v => fmt("exp_r", v), heat: 0.15},
     {k: "is_win_rate", t: "IS勝率", f: v => fmt("win_rate", v)}, {k: "is_net_usd", t: "IS損益", f: v => fmt("net_usd", v)},
     {k: "oos_trades", t: "OOS件数", f: v => fmt("trades", v)}, {k: "oos_exp_r", t: "OOS期待値", f: v => fmt("exp_r", v), heat: 0.15},
     {k: "oos_win_rate", t: "OOS勝率", f: v => fmt("win_rate", v)}, {k: "oos_net_usd", t: "OOS損益", f: v => fmt("net_usd", v), heat: 20000},
@@ -456,9 +470,39 @@ function anomSection() {
   bindAll(["aM"], draw); draw();
 }
 
+function featSection() {
+  if (!DATA.fstats) return;
+  $("featCtl").innerHTML = select("fO", "OR", ORS.map(o => [o, o + "分"]), 15) + select("fS", "損切り", [[1, "前3本"], [3, "逆側OR"]], 3) + select("fR", "RR", [[1, "1"], [2, "2"]], 1) +
+    select("fSort", "並べ替え", [["t", "t値"], ["group", "グループ"]], "t");
+  const GROUP = {volatility: "ボラティリティ", regime: "レジーム", profile: "プロファイル", level: "価格水準", confluence: "コンフルエンス", volume: "出来高"};
+  const draw = () => {
+    const o = +val("fO"), s = +val("fS"), rr = +val("fR");
+    let rows = DATA.fstats.filter(r => r.or_min === o && r.stop === s && r.rr === rr);
+    rows = val("fSort") === "t" ? rows.sort((a, b) => (b.t_stat ?? -9) - (a.t_stat ?? -9)) : rows.sort((a, b) => a.group.localeCompare(b.group));
+    $("featTable").innerHTML = table([
+      {k: "group", t: "グループ", l: true, f: v => GROUP[v] || v}, {k: "label", t: "特徴量", l: true},
+      {k: "n_hi", t: "上位 件数"}, {k: "exp_hi", t: "上位 期待値", f: v => fmt("exp_r", v), heat: 0.2},
+      {k: "n_lo", t: "下位 件数"}, {k: "exp_lo", t: "下位 期待値", f: v => fmt("exp_r", v), heat: 0.2},
+      {k: "top_minus_bottom", t: "差", f: v => fmt("exp_r", v), heat: 0.2},
+      {k: "t_stat", t: "t値", f: v => v == null ? "–" : v.toFixed(2)},
+      {k: "years_same_sign", t: "一貫した年", f: (v, r) => `${v} / ${r.years}`},
+    ], rows);
+    const feats = rows.map(r => [r.feature, r.label]);
+    const cur = $("fF") ? val("fF") : feats[0][0];
+    $("fqCtl").innerHTML = select("fF", "分位ごとの期待値を見る特徴量", feats, feats.some(f => f[0] === cur) ? cur : feats[0][0]);
+    const dq = () => {
+      const q = DATA.fquint.filter(r => r.or_min === o && r.stop === s && r.rr === rr && r.feature === val("fF"));
+      $("fqTable").innerHTML = table([{k: "bucket", t: "区分", l: true}, {k: "trades", t: "件数"}, {k: "win_rate", t: "勝率"}, {k: "exp_r", t: "期待値 R", heat: 0.2}], q);
+    };
+    $("fF").addEventListener("change", dq); dq();
+  };
+  bindAll(["fO", "fS", "fR", "fSort"], draw); draw();
+}
+
 function render() {
   header(); kpis(); equityChart(); wfTable();
-  $("wfScore").addEventListener("change", wfTable);
+  $("wfScore").addEventListener("change", () => { kpis(); equityChart(); wfTable(); });
+  featSection();
   gridSection(); reSection(); timeSection(); wickSection(); sizeSection(); anomSection();
 }
 render();

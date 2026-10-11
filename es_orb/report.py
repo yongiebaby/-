@@ -12,6 +12,7 @@ import pandas as pd  # noqa: E402
 
 import analysis  # noqa: E402
 import backtest as BT  # noqa: E402
+import features as F  # noqa: E402
 
 TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_template.html")
 METRICS = ["trades", "net_usd", "win_rate", "pf", "exp_r", "max_dd"]
@@ -33,15 +34,14 @@ def _records(df):
     return [{k: _clean(v) for k, v in r.items()} for r in df.to_dict("records")]
 
 
-def cfg_label(c):
-    f = []
-    if c["atr_lo"] > 0 or c["atr_hi"] < 1e8:
-        f.append(f"ATR比 {c['atr_lo']:g}–{'∞' if c['atr_hi'] >= 1e8 else format(c['atr_hi'], 'g')}")
-    if c["orr_lo"] > 0 or c["orr_hi"] < 1e8:
-        f.append(f"OR比 {c['orr_lo']:g}–{'∞' if c['orr_hi'] >= 1e8 else format(c['orr_hi'], 'g')}")
-    if (c["wk_lo"], c["wk_hi"]) != (0, 999):
-        f.append(f"ヒゲ {c['wk_lo']}–{'∞' if c['wk_hi'] >= 999 else c['wk_hi']}本")
-    return f
+def _cols(tr):
+    return tr["pnl_usd"].to_numpy(), tr["r_mult"].to_numpy(), tr["both_hit"].to_numpy()
+
+
+def _filter_label(filters):
+    if not filters:
+        return "なし"
+    return " & ".join(f"{F.FEATURES[f[0]][0] if f[0] in F.FEATURES else 'ブレイク前のヒゲ本数'} {f[1]}" for f in filters)
 
 
 def build(out, findings=None):
@@ -55,16 +55,20 @@ def build(out, findings=None):
     # ウォークフォワード
     wf_rows, eq = [], {}
     for r in wf:
-        c = r["cfg"]
+        c, tr = r["cfg"], r["trades"]
+        is_y = [int(v) for v in r["is_years"].split("-")]
+        is_m = BT.metrics(*_cols(tr[tr["year"].isin(is_y)]))
+        oos_tr = tr[tr["year"] == r["step"]]
+        oos_m = BT.metrics(*_cols(oos_tr))
         row = dict(step=r["step"], is_years=r["is_years"], score=r["score"], variant=r["variant"],
                    or_min=c["or_min"], stop=BT.STOP_NAMES[c["stop"]], rr=c["rr"], mode=BT.MODE_NAMES[c["mode"]],
-                   max_tr=c["max_tr"], end_min=c["end_min"], filters=" / ".join(cfg_label(c)) or "なし",
-                   n_candidates=r["n_candidates"])
-        row.update({f"is_{k}": r["is_m"][k] for k in METRICS + ["both_hit", "gap_skip"]})
-        row.update({f"oos_{k}": r["oos_m"][k] for k in METRICS + ["both_hit", "gap_skip"]})
+                   max_tr=c["max_tr"], end_min=c["end_min"], filters=_filter_label(r["filters"]))
+        for y in is_y:
+            row[f"is_trades_{'a' if y == is_y[0] else 'b'}"] = int((tr["year"] == y).sum())
+        row.update({f"is_{k}": is_m[k] for k in METRICS})
+        row.update({f"oos_{k}": oos_m[k] for k in METRICS + ["both_hit"]})
         wf_rows.append(row)
-        key = f"{r['score']}|{r['variant']}"
-        eq.setdefault(key, []).append(r["oos_trades"])
+        eq.setdefault(f"{r['score']}|{r['variant']}", []).append(oos_tr)
     wf_df = pd.DataFrame(wf_rows)
     wf_df.to_csv(os.path.join(out, "walkforward_selection.csv"), index=False)
 
@@ -72,8 +76,9 @@ def build(out, findings=None):
     for key, parts in eq.items():
         tr = pd.concat(parts, ignore_index=True).sort_values(["date", "trade_num"])
         tr.assign(variant=key).to_csv(os.path.join(out, f"oos_trades_{key.replace('|', '_')}.csv"), index=False)
-        m = BT.metrics(tr["pnl_usd"].to_numpy(), tr["r_mult"].to_numpy(), tr["both_hit"].to_numpy())
-        oos_summary.append(dict(variant=key, **{k: m[k] for k in METRICS + ["both_hit"]}))
+        m = BT.metrics(*_cols(tr))
+        oos_summary.append(dict(variant=key, **{k: m[k] for k in METRICS + ["both_hit"]},
+                                per_year={str(y): round(float(g["pnl_usd"].sum()), 2) for y, g in tr.groupby("year")}))
         daily = tr.groupby("date")["pnl_usd"].sum().cumsum()
         curves[key] = [[d.strftime("%Y-%m-%d"), round(float(v), 2)] for d, v in daily.items()]
     pd.DataFrame(oos_summary).to_csv(os.path.join(out, "walkforward_oos_summary.csv"), index=False)
@@ -98,11 +103,14 @@ def build(out, findings=None):
             excluded_list=[str(x) for x in ex["date"]],
             partial_days=[f"{r.date} ({r.bars}本)" for r in d[d["bars"] < 78].itertuples()],
             windows=wins,
-            min_trades=BT.MIN_TRADES_IS,
         ),
         base=base,
         wf=_records(wf_df),
-        oos_summary=_records(pd.DataFrame(oos_summary)),
+        oos_summary=[{k: (_clean(v) if k != "per_year" else v) for k, v in r.items()} for r in oos_summary],
+        fstats=_records(st["fstats"].drop(columns=["label"]).assign(
+            label=st["fstats"]["feature"].map(lambda n: F.FEATURES[n][0]))),
+        fquint=_records(st["fquint"]),
+        min_per_year=100,
         curves=curves,
         desc={k: _records(v) for k, v in desc.items()},
     )
